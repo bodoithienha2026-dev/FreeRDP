@@ -12,7 +12,6 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 360
     
-    # Kích hoạt 10 máy chạy song song
     strategy:
       fail-fast: false
       matrix:
@@ -28,36 +27,43 @@ jobs:
           net user user ngoc0102@ /add
           net localgroup administrators user /add
           
-          Write-Host "✅ [Máy ${{ matrix.instance }}] Đã tạo tài khoản: user / Mật khẩu: ngoc0102@ và kích hoạt RDP thành công."
+          Write-Host "✅ [Máy ${{ matrix.instance }}] Đã tạo tài khoản: user / Mật khẩu: ngoc0102@ và kích hoạt RDP."
 
-      - name: 🌐 Cài đặt và Chạy Tunnel
+      - name: 🌐 Cài đặt và Chạy Tunnel (Dùng Bore - Miễn phí)
         run: |
-          Write-Host "Đang tải Kami Tunnel cho Windows..."
-          Invoke-WebRequest -Uri "https://github.com/kami2k1/tunnel/releases/latest/download/kami-tunnel-windows-amd64.exe" -OutFile "kami-tunnel.exe"
+          Write-Host "Đang tải Bore Tunnel..."
+          Invoke-WebRequest -Uri "https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip" -OutFile "bore.zip"
+          Expand-Archive -Path "bore.zip" -DestinationPath "."
           
-          Write-Host "Đang khởi chạy Kami Tunnel..."
-          Start-Process -FilePath ".\kami-tunnel.exe" -ArgumentList "3389" -WindowStyle Hidden -RedirectStandardOutput "kami_rdp.log" -RedirectStandardError "kami_err.log"
+          Write-Host "Đang khởi chạy Bore Tunnel..."
+          # Đẩy cổng RDP 3389 ra server công cộng của bore (bore.pub)
+          Start-Process -FilePath ".\bore.exe" -ArgumentList "local 3389 --to bore.pub" -WindowStyle Hidden -RedirectStandardOutput "bore.log" -RedirectStandardError "bore_err.log"
 
       - name: 📡 Lấy thông tin kết nối (Máy ${{ matrix.instance }})
         run: |
           $RDP_IP = ""
           $Retry = 0
           
-          Write-Host "⏳ Đang đợi IP từ hệ thống Tunnel..."
-          while ([string]::IsNullOrEmpty($RDP_IP) -and $Retry -lt 60) {
-              if (Test-Path "kami_tunnel.txt") {
-                  $RDP_IP = (Get-Content "kami_tunnel.txt" | Select-Object -First 1).Trim()
+          Write-Host "⏳ Đang đợi IP từ hệ thống Bore Tunnel..."
+          while ([string]::IsNullOrEmpty($RDP_IP) -and $Retry -lt 30) {
+              if (Test-Path "bore.log") {
+                  $logContent = Get-Content "bore.log" -Raw
+                  # Dùng Regex để quét tìm địa chỉ dạng bore.pub:port
+                  if ($logContent -match "(bore\.pub:\d+)") {
+                      $RDP_IP = $matches[1]
+                  }
               }
               if ([string]::IsNullOrEmpty($RDP_IP)) {
                   Start-Sleep -Seconds 2
                   $Retry++
-                  Write-Host "   Thử lại $Retry/60..."
+                  Write-Host "   Thử lại $Retry/30..."
               }
           }
           
           if ([string]::IsNullOrEmpty($RDP_IP)) {
-              Write-Host "❌ Không lấy được IP. Có thể file kami-tunnel.exe không hoạt động đúng trên môi trường này."
-              if (Test-Path "kami_rdp.log") { Get-Content "kami_rdp.log" }
+              Write-Host "❌ Không lấy được IP. Log của Bore:"
+              if (Test-Path "bore.log") { Get-Content "bore.log" }
+              if (Test-Path "bore_err.log") { Get-Content "bore_err.log" }
               exit 1
           }
           
