@@ -1,4 +1,4 @@
-name: 🖥️ NATIVE WINDOWS RDP (10 INSTANCES)
+name: 🖥️ NATIVE WINDOWS RDP (TAILSCALE)
 
 on:
   workflow_dispatch:
@@ -18,69 +18,41 @@ jobs:
         instance: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     steps:
-      - name: 🔧 Kích hoạt RDP & Vượt rào bảo mật (Máy ${{ matrix.instance }})
+      - name: 🔧 Kích hoạt RDP & Tạo User (Máy ${{ matrix.instance }})
         run: |
-          # Bật RDP và TẮT NLA (Network Level Authentication) để Tunnel đi qua được
+          # Bật RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 0
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "SecurityLayer" -Value 1
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           
-          # Ép khởi động lại dịch vụ RDP để nhận cấu hình mới ngay lập tức
+          # Tối ưu cấu hình RDP cho mạng ảo
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 0
           Restart-Service TermService -Force
           
-          # Tạo user với mật khẩu thêm chữ in hoa cho đúng chuẩn Windows Server
+          # Tạo tài khoản đúng chuẩn bảo mật (Chú ý chữ N viết hoa)
           net user user Ngoc0102@ /add
           net localgroup administrators user /add
           
           Write-Host "✅ [Máy ${{ matrix.instance }}] Đã tạo tài khoản: user / Mật khẩu: Ngoc0102@"
 
-      - name: 🌐 Cài đặt và Chạy Tunnel (Kami-Tunnel)
-        run: |
-          Write-Host "📥 Đang tải Kami Tunnel bản chuẩn (tar.gz)..."
-          curl.exe -L -o kami.tar.gz "https://github.com/kami2k1/tunnel/releases/latest/download/kami-tunnel-windows-amd64.tar.gz"
-          
-          Write-Host "📦 Đang giải nén..."
-          tar -xzf kami.tar.gz
-          
-          Write-Host "🚀 Đang khởi chạy Tunnel cổng 3389..."
-          Start-Process -FilePath ".\kami-tunnel.exe" -ArgumentList "3389" -WindowStyle Hidden -RedirectStandardOutput "kami_tunnel.txt" -RedirectStandardError "kami_err.log"
+      - name: 🌐 Kết nối mạng Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          version: latest
 
       - name: 📡 Lấy thông tin kết nối (Máy ${{ matrix.instance }})
         run: |
-          $RDP_IP = ""
-          $Retry = 0
-          
-          Write-Host "⏳ Đang đợi IP từ hệ thống Tunnel..."
-          while ([string]::IsNullOrEmpty($RDP_IP) -and $Retry -lt 60) {
-              if (Test-Path "kami_tunnel.txt") {
-                  $content = Get-Content "kami_tunnel.txt" -Raw
-                  if ($content -match "([a-zA-Z0-9.-]+:\d+)") {
-                      $RDP_IP = $matches[1]
-                  }
-              }
-              if ([string]::IsNullOrEmpty($RDP_IP)) {
-                  Start-Sleep -Seconds 2
-                  $Retry++
-                  Write-Host "   Thử lại $Retry/60..."
-              }
-          }
-          
-          if ([string]::IsNullOrEmpty($RDP_IP)) {
-              Write-Host "❌ Không lấy được IP. Log chi tiết:"
-              if (Test-Path "kami_tunnel.txt") { Get-Content "kami_tunnel.txt" | Write-Host }
-              if (Test-Path "kami_err.log") { Get-Content "kami_err.log" | Write-Host }
-              exit 1
-          }
+          $TAILSCALE_IP = (tailscale ip -4).Trim()
           
           Write-Host ""
           Write-Host "╔══════════════════════════════════════════════════════════╗"
           Write-Host "║ ✅ MÁY SỐ ${{ matrix.instance }} - ĐÃ SẴN SÀNG KẾT NỐI                  ║"
           Write-Host "╠══════════════════════════════════════════════════════════╣"
-          Write-Host "║ 🌐  RDP Address    : $RDP_IP"
-          Write-Host "║ 👤  Username       : user"
-          Write-Host "║ 🔐  Password       : Ngoc0102@  <-- (Chú ý chữ N viết hoa nhé)"
+          Write-Host "║ 🌐  RDP IP (Tailscale) : $TAILSCALE_IP"
+          Write-Host "║ 👤  Username           : user"
+          Write-Host "║ 🔐  Password           : Ngoc0102@"
           Write-Host "╚══════════════════════════════════════════════════════════╝"
+          Write-Host "💡 Hãy chắc chắn bạn đã BẬT TAILSCALE trên điện thoại/máy tính của mình!"
           Write-Host ""
 
       - name: ⏰ Duy trì session (6 tiếng)
@@ -92,4 +64,3 @@ jobs:
               Write-Host "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] Máy ${{ matrix.instance }} đang chạy | Đã qua: $Elapsed phút | Còn lại: $Remaining phút"
               Start-Sleep -Seconds 300
           }
-
