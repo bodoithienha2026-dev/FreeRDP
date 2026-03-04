@@ -37,7 +37,7 @@ jobs:
       - name: 🌐 Kết nối mạng Tailscale
         uses: tailscale/github-action@v3
         with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          authkey: tskey-auth-kWHT7TyhYn11CNTRL-cek3P4ubCKRziDT646joJRo7LoVjShF2
           version: latest
 
       - name: 📡 Lấy thông tin kết nối (Máy ${{ matrix.instance }})
