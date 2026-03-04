@@ -27,24 +27,18 @@ jobs:
           net user user ngoc0102@ /add
           net localgroup administrators user /add
           
-          Write-Host "✅ [Máy ${{ matrix.instance }}] Đã tạo tài khoản: user / Mật khẩu: ngoc0102@ và kích hoạt RDP."
+          Write-Host "✅ [Máy ${{ matrix.instance }}] Đã tạo tài khoản: user / Mật khẩu: ngoc0102@"
 
-      - name: 🌐 Cài đặt và Chạy Tunnel (Dùng SSH Native - 3 Lớp Dự Phòng)
+      - name: 🌐 Cài đặt và Chạy Tunnel (Kami-Tunnel)
         run: |
-          Write-Host "Đang tạo SSH Key ẩn danh..."
-          mkdir -Force "$env:USERPROFILE\.ssh" -ErrorAction SilentlyContinue | Out-Null
-          ssh-keygen -t rsa -b 4096 -f "$env:USERPROFILE\.ssh\id_rsa" -N '""'
+          Write-Host "📥 Đang tải Kami Tunnel bản chuẩn (tar.gz)..."
+          curl.exe -L -o kami.tar.gz "https://github.com/kami2k1/tunnel/releases/latest/download/kami-tunnel-windows-amd64.tar.gz"
           
-          Write-Host "Đang khởi chạy hệ thống Tunnel 3 lớp (Serveo, Tuns, Pinggy)..."
+          Write-Host "📦 Đang giải nén..."
+          tar -xzf kami.tar.gz
           
-          # Lớp 1: Serveo (Ưu tiên vì ổn định, không giới hạn thời gian)
-          Start-Process -FilePath "ssh.exe" -ArgumentList "-o StrictHostKeyChecking=no -R 0:localhost:3389 serveo.net" -WindowStyle Hidden -RedirectStandardOutput "tunnel_serveo.log" -RedirectStandardError "tunnel_serveo_err.log"
-          
-          # Lớp 2: Tuns.sh (Máy chủ Sish công cộng - Rất trâu bò)
-          Start-Process -FilePath "ssh.exe" -ArgumentList "-o StrictHostKeyChecking=no -R 0:localhost:3389 tuns.sh" -WindowStyle Hidden -RedirectStandardOutput "tunnel_tuns.log" -RedirectStandardError "tunnel_tuns_err.log"
-          
-          # Lớp 3: Pinggy (Dự phòng cuối cùng - Kết nối cực nhanh)
-          Start-Process -FilePath "ssh.exe" -ArgumentList "-p 443 -o StrictHostKeyChecking=no -R 0:localhost:3389 tcp@a.pinggy.io" -WindowStyle Hidden -RedirectStandardOutput "tunnel_pinggy.log" -RedirectStandardError "tunnel_pinggy_err.log"
+          Write-Host "🚀 Đang khởi chạy Tunnel cổng 3389..."
+          Start-Process -FilePath ".\kami-tunnel.exe" -ArgumentList "3389" -WindowStyle Hidden -RedirectStandardOutput "kami_tunnel.txt" -RedirectStandardError "kami_err.log"
 
       - name: 📡 Lấy thông tin kết nối (Máy ${{ matrix.instance }})
         run: |
@@ -52,28 +46,25 @@ jobs:
           $Retry = 0
           
           Write-Host "⏳ Đang đợi IP từ hệ thống Tunnel..."
-          while ([string]::IsNullOrEmpty($RDP_IP) -and $Retry -lt 30) {
-              $logContent = ""
-              $files = Get-ChildItem -Path "tunnel_*.log" -ErrorAction SilentlyContinue
-              foreach ($file in $files) {
-                  $logContent += Get-Content $file.FullName -Raw -ErrorAction SilentlyContinue
+          while ([string]::IsNullOrEmpty($RDP_IP) -and $Retry -lt 60) {
+              if (Test-Path "kami_tunnel.txt") {
+                  # Dùng Regex để quét lấy IP/Domain và Port
+                  $content = Get-Content "kami_tunnel.txt" -Raw
+                  if ($content -match "([a-zA-Z0-9.-]+:\d+)") {
+                      $RDP_IP = $matches[1]
+                  }
               }
-              
-              # Tự động quét và lấy IP/Cổng của bên nào kết nối thành công trước
-              if ($logContent -match "(?:tcp://)?([a-zA-Z0-9.-]*(?:serveo\.net|tuns\.sh|pinggy\.io):\d+)") {
-                  $RDP_IP = $matches[1]
-              }
-              
               if ([string]::IsNullOrEmpty($RDP_IP)) {
                   Start-Sleep -Seconds 2
                   $Retry++
-                  Write-Host "   Thử lại $Retry/30..."
+                  Write-Host "   Thử lại $Retry/60..."
               }
           }
           
           if ([string]::IsNullOrEmpty($RDP_IP)) {
               Write-Host "❌ Không lấy được IP. Log chi tiết:"
-              Get-Content tunnel_*.log -ErrorAction SilentlyContinue | Write-Host
+              if (Test-Path "kami_tunnel.txt") { Get-Content "kami_tunnel.txt" | Write-Host }
+              if (Test-Path "kami_err.log") { Get-Content "kami_err.log" | Write-Host }
               exit 1
           }
           
