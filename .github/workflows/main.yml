@@ -18,16 +18,22 @@ jobs:
         instance: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     steps:
-      - name: 🔧 Kích hoạt RDP & Tạo User (Máy ${{ matrix.instance }})
+      - name: 🔧 Kích hoạt RDP & Vượt rào bảo mật (Máy ${{ matrix.instance }})
         run: |
+          # Bật RDP và TẮT NLA (Network Level Authentication) để Tunnel đi qua được
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 0
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "SecurityLayer" -Value 1
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
           
-          net user user ngoc0102@ /add
+          # Ép khởi động lại dịch vụ RDP để nhận cấu hình mới ngay lập tức
+          Restart-Service TermService -Force
+          
+          # Tạo user với mật khẩu thêm chữ in hoa cho đúng chuẩn Windows Server
+          net user user Ngoc0102@ /add
           net localgroup administrators user /add
           
-          Write-Host "✅ [Máy ${{ matrix.instance }}] Đã tạo tài khoản: user / Mật khẩu: ngoc0102@"
+          Write-Host "✅ [Máy ${{ matrix.instance }}] Đã tạo tài khoản: user / Mật khẩu: Ngoc0102@"
 
       - name: 🌐 Cài đặt và Chạy Tunnel (Kami-Tunnel)
         run: |
@@ -48,7 +54,6 @@ jobs:
           Write-Host "⏳ Đang đợi IP từ hệ thống Tunnel..."
           while ([string]::IsNullOrEmpty($RDP_IP) -and $Retry -lt 60) {
               if (Test-Path "kami_tunnel.txt") {
-                  # Dùng Regex để quét lấy IP/Domain và Port
                   $content = Get-Content "kami_tunnel.txt" -Raw
                   if ($content -match "([a-zA-Z0-9.-]+:\d+)") {
                       $RDP_IP = $matches[1]
@@ -74,7 +79,7 @@ jobs:
           Write-Host "╠══════════════════════════════════════════════════════════╣"
           Write-Host "║ 🌐  RDP Address    : $RDP_IP"
           Write-Host "║ 👤  Username       : user"
-          Write-Host "║ 🔐  Password       : ngoc0102@"
+          Write-Host "║ 🔐  Password       : Ngoc0102@  <-- (Chú ý chữ N viết hoa nhé)"
           Write-Host "╚══════════════════════════════════════════════════════════╝"
           Write-Host ""
 
@@ -87,3 +92,4 @@ jobs:
               Write-Host "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] Máy ${{ matrix.instance }} đang chạy | Đã qua: $Elapsed phút | Còn lại: $Remaining phút"
               Start-Sleep -Seconds 300
           }
+
